@@ -1,0 +1,17 @@
+version: '2'
+
+services:
+  training:
+    image: jenslaufer/neural-network-training-with-docker:latest
+    container_name: "neural-network-training-with-docker"
+    volumes:
+      - ./app/:/development
+    depends_on:
+      - trainingdb
+
+  trainingdb:
+    image: mongo:3.6.12
+    container_name: "trainingdb"
+    ports:
+      - 27018:27017
+    command: mongod
