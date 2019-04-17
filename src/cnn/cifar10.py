@@ -20,12 +20,12 @@ import json
 
 class Training:
 
-    def __init__(self, mongouri, database, collection, session_name,
+    def __init__(self, mongouri, database, collection, session_id,
                  top_model, loss, optimizer, batch_size, epochs, subset_pct):
         print("training...")
         client = MongoClient(mongouri)
 
-        self.session_name = session_name
+        self.session_id = session_id
         self.epochs = int(epochs)
         self.batch_size = int(batch_size)
         self.model = top_model
@@ -73,7 +73,7 @@ class Training:
 
         with open(filename, 'rb') as f:
             self.fs.put(f.read(), filename=filename,
-                        type='model_arch', session_name=self.session_name, contentType="application/x-hdf")
+                        type='model_arch', session_id=self.session_id, contentType="application/x-hdf")
         os.remove(filename)
 
     def __train_shallow_neural_network(self):
@@ -87,12 +87,12 @@ class Training:
 
         out = io.StringIO(json.dumps(history.history))
         self.fs.put(out.getvalue(), filename="training_history.json",
-                    type='training_history', session_name=self.session_name,
+                    type='training_history', session_id=self.session_id,
                     encoding="utf-8", contentType="text/json")
 
         with open(filename, 'rb') as f:
             self.fs.put(f.read(), filename=filename,
-                        type='model_weights', session_name=self.session_name, contentType="application/x-hdf")
+                        type='model_weights', session_id=self.session_id, contentType="application/x-hdf")
         os.remove(filename)
 
     def __get_bottleneck_features(self, x, dataset_type):
@@ -137,18 +137,27 @@ class Training:
         self.y_test = keras.utils.to_categorical(
             np.squeeze(self.y_test), num_classes=10)
 
-        self.collection.update_one({'name': self.session_name},  {
+        self.collection.update_one({'_id': self.session_id},  {
             '$set': {'test_sample_size': len(self.x_test),
                      'train_sample_size': len(self.x_train)}})
 
+    def __load_weights(self):
+        filename = 'model_weights.hdf5'
+        session = db['fs.files'].find_one(
+            {'session_id': self.session_id, 'filename': filename})
+        with open(filename, 'wb') as f:
+            f.write(self.fs.get(session['_id']).read())
+        self.model.load_weights(filename)
+        os.remove(filename)
+
     def __test_model(self):
-        self.model.load_weights('model.best.hdf5')
+        self.__load_weights()
 
         # evaluate test accuracy
         score = self.model.evaluate(self.test_features, self.y_test, verbose=0)
         accuracy = score[1]
 
-        self.collection.update_one({'name': self.session_name}, {
+        self.collection.update_one({'_id': self.session_id}, {
             '$set': {'accuracy': accuracy}})
 
         # print test accuracy
@@ -168,6 +177,6 @@ if __name__ == '__main__':
 
     sessions = list(db[collection].find({"accuracy": {'$exists': 0}}))
 
-    [Training(mongouri, database, collection, session['name'],
+    [Training(mongouri, database, collection, session['_id'],
               model, session['loss'], session['optimizer'], session['batch_size'],
               session['epochs'], session['subset_pct']) for session in sessions]
