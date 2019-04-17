@@ -24,7 +24,7 @@ import datetime
 class Training:
 
     def __init__(self, mongouri, database, collection, session_id,
-                 top_model, loss, optimizer, batch_size, epochs, subset_pct):
+                 loss, optimizer, batch_size, epochs, subset_pct):
         print("training...")
         set_random_seed(21)
         client = MongoClient(mongouri)
@@ -32,7 +32,6 @@ class Training:
         self.session_id = session_id
         self.epochs = int(epochs)
         self.batch_size = int(batch_size)
-        self.model = top_model
         self.loss = loss
         self.optimizer = optimizer
 
@@ -179,5 +178,5 @@ if __name__ == '__main__':
     sessions = list(db[collection].find({"accuracy": {'$exists': 0}}))
 
     [Training(mongouri, database, collection, session['_id'],
-              model, session['loss'], session['optimizer'], session['batch_size'],
+              session['loss'], session['optimizer'], session['batch_size'],
               session['epochs'], session['subset_pct']) for session in sessions]
