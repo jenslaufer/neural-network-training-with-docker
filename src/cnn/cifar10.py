@@ -15,7 +15,10 @@ from keras.layers import Dense, Dropout, Conv2D, GlobalAveragePooling2D
 from keras.datasets import cifar10
 from keras.applications.inception_v3 import InceptionV3, preprocess_input
 
+from tensorflow import set_random_seed
+
 import json
+import datetime
 
 
 class Training:
@@ -23,6 +26,7 @@ class Training:
     def __init__(self, mongouri, database, collection, session_id,
                  top_model, loss, optimizer, batch_size, epochs, subset_pct):
         print("training...")
+        set_random_seed(21)
         client = MongoClient(mongouri)
 
         self.session_id = session_id
@@ -158,7 +162,7 @@ class Training:
         accuracy = score[1]
 
         self.collection.update_one({'_id': self.session_id}, {
-            '$set': {'accuracy': accuracy}})
+            '$set': {'accuracy': accuracy, "date": datetime.datetime.utcnow()}})
 
         # print test accuracy
         print('Test accuracy: %.2f%%' % (100 * accuracy))
