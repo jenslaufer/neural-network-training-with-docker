@@ -1,9 +1,6 @@
 from pymongo import MongoClient
 import gridfs
-import keras
-from keras.datasets import cifar10
 import numpy as np
-from keras.applications.inception_v3 import InceptionV3, preprocess_input
 import scipy
 from scipy import misc
 import os
@@ -11,19 +8,34 @@ import io
 from math import ceil
 from tempfile import TemporaryFile
 
+import keras
 from keras.callbacks import ModelCheckpoint
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Conv2D, GlobalAveragePooling2D
+from keras.datasets import cifar10
+from keras.applications.inception_v3 import InceptionV3, preprocess_input
+
+import json
 
 
 class Training:
 
-    def __init__(self, mongouri='mongodb://trainingdb', database='trainings', subset_pct=1.0):
+    def __init__(self, mongouri, database, collection, session_name,
+                 top_model, loss, optimizer, batch_size, epochs, subset_pct):
         print("training...")
         client = MongoClient(mongouri)
+
+        self.session_name = session_name
+        self.epochs = int(epochs)
+        self.batch_size = int(batch_size)
+        self.model = top_model
+        self.loss = loss
+        self.optimizer = optimizer
+
         self.subset_pct = subset_pct
         self.bottleneck_features_filename = "cifar10_bottleneck_features"
         self.db = client[database]
+        self.collection = db[collection]
         self.fs = gridfs.GridFS(self.db)
 
         self.__load_images()
@@ -42,6 +54,7 @@ class Training:
         print('model loaded.')
 
     def __init_shallow_neural_network(self):
+        print(self.training_features.shape[1:])
         model = Sequential()
         model.add(Conv2D(filters=100, kernel_size=2,
                          input_shape=self.training_features.shape[1:]))
@@ -49,19 +62,38 @@ class Training:
         model.add(GlobalAveragePooling2D())
         model.add(Dropout(0.3))
         model.add(Dense(10, activation='softmax'))
-        model.summary()
-
-        model.compile(loss='categorical_crossentropy',
-                      optimizer='rmsprop', metrics=['accuracy'])
         self.model = model
+        self.model.summary()
+
+        self.model.compile(
+            loss=self.loss, optimizer=self.optimizer, metrics=['accuracy'])
+
+        filename = 'model_arch.hdf5'
+        self.model.save(filename)
+
+        with open(filename, 'rb') as f:
+            self.fs.put(f.read(), filename=filename,
+                        type='model_arch', session_name=self.session_name, contentType="application/x-hdf")
+        os.remove(filename)
 
     def __train_shallow_neural_network(self):
+        filename = 'model_weights.hdf5'
 
-        checkpointer = ModelCheckpoint(filepath='model.best.hdf5',
+        checkpointer = ModelCheckpoint(filepath=filename,
                                        verbose=1, save_best_only=True)
-        self.model.fit(self.training_features, self.y_train, batch_size=50, epochs=50,
-                       validation_split=0.2, callbacks=[checkpointer],
-                       verbose=2, shuffle=True)
+        history = self.model.fit(self.training_features, self.y_train, batch_size=self.batch_size,
+                                 epochs=self.epochs, validation_split=0.2, callbacks=[checkpointer],
+                                 verbose=2, shuffle=True)
+
+        out = io.StringIO(json.dumps(history.history))
+        self.fs.put(out.getvalue(), filename="training_history.json",
+                    type='training_history', session_name=self.session_name,
+                    encoding="utf-8", contentType="text/json")
+
+        with open(filename, 'rb') as f:
+            self.fs.put(f.read(), filename=filename,
+                        type='model_weights', session_name=self.session_name, contentType="application/x-hdf")
+        os.remove(filename)
 
     def __get_bottleneck_features(self, x, dataset_type):
         filename = "{}_{}_{}.npz".format(
@@ -81,7 +113,8 @@ class Training:
 
             outfile = io.BytesIO()
             np.savez(outfile, features=features)
-            self.fs.put(outfile.getvalue(), filename=filename)
+            self.fs.put(outfile.getvalue(), filename=filename,
+                        type='bottleneck_features',  contentType="application/x-hdf")
 
         return features
 
@@ -104,16 +137,37 @@ class Training:
         self.y_test = keras.utils.to_categorical(
             np.squeeze(self.y_test), num_classes=10)
 
+        self.collection.update_one({'name': self.session_name},  {
+            '$set': {'test_sample_size': len(self.x_test),
+                     'train_sample_size': len(self.x_train)}})
+
     def __test_model(self):
         self.model.load_weights('model.best.hdf5')
 
         # evaluate test accuracy
         score = self.model.evaluate(self.test_features, self.y_test, verbose=0)
-        accuracy = 100*score[1]
+        accuracy = score[1]
+
+        self.collection.update_one({'name': self.session_name}, {
+            '$set': {'accuracy': accuracy}})
 
         # print test accuracy
-        print('Test accuracy: %.2f%%' % accuracy)
+        print('Test accuracy: %.2f%%' % (100 * accuracy))
 
 
 if __name__ == '__main__':
-    Training(mongouri="mongodb://localhost:27018", subset_pct=1)
+
+    model = Sequential()
+
+    mongouri = "mongodb://localhost:27018"
+    database = "trainings"
+    collection = "sessions"
+
+    client = MongoClient(mongouri)
+    db = client[database]
+
+    sessions = list(db[collection].find({"accuracy": {'$exists': 0}}))
+
+    [Training(mongouri, database, collection, session['name'],
+              model, session['loss'], session['optimizer'], session['batch_size'],
+              session['epochs'], session['subset_pct']) for session in sessions]
