@@ -169,10 +169,7 @@ class Training:
 
 
 if __name__ == '__main__':
-
-    model = Sequential()
-
-    mongouri = "mongodb://localhost:27018"
+    mongouri = "mongodb://trainingdb"
     database = "trainings"
     collection = "sessions"
 
