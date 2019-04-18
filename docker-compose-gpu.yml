@@ -2,7 +2,7 @@ version: '2'
 
 services:
   training:
-    image: jenslaufer/neural-network-training-with-docker:latest
+    image: jenslaufer/neural-network-training-with-docker:0.2.0-gpu
     container_name: neural-network-training-with-docker
     depends_on:
       - trainingdb
