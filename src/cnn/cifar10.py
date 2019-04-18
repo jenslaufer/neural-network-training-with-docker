@@ -15,7 +15,6 @@ from keras.layers import Dense, Dropout, Conv2D, GlobalAveragePooling2D
 from keras.datasets import cifar10
 from keras.applications.inception_v3 import InceptionV3, preprocess_input
 
-from tensorflow import set_random_seed
 
 import json
 import datetime
@@ -26,7 +25,6 @@ class Training:
     def __init__(self, mongouri, database, collection, session_id,
                  loss, optimizer, batch_size, epochs, subset_pct):
         print("training...")
-        set_random_seed(21)
         client = MongoClient(mongouri)
 
         self.session_id = session_id
