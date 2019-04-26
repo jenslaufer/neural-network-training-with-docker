@@ -6,10 +6,14 @@ I prepared also ready-to-use [Docker Images on Docker Hub](https://cloud.docker.
 
 ## Setup of a AWS instance
 
-To train the neural network with GPU power on AWS you need to set up instance with docker-machine.
+To train the neural network with GPU power on AWS you need to set up instance with docker-machine. The ami-0891f5dcc59fc5285 is a AMI I am sharing to the public. It has CUDO 10.1 and nvidia docker, which is needed to "activate" the GPU.
 
 ```bash
-docker-machine create --driver amazonec2 --amazonec2-instance-type p2.xlarge --amazonec2-ami ami-0891f5dcc59fc5285 --amazonec2-vpc-id <YOUR VPC-ID> cifar10-deep-learning
+docker-machine create --driver amazonec2\
+                      --amazonec2-instance-type p2.xlarge\
+                      --amazonec2-ami ami-0891f5dcc59fc5285\
+                      --amazonec2-vpc-id <YOUR VPC-ID>\
+                      cifar10-deep-learning
 ```
 
 ## Training with GPU
